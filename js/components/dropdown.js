@@ -3,10 +3,10 @@
 
   angular
 
-    .module('kt.components.dropdown', [])
+    .module('kt.components.dropdown', ['kt.util.dom'])
 
 
-    .factory('ktDropdownSvc', [function () {
+    .factory('ktDropdownSvc', ['$timeout', 'ktOffset', function ($timeout, ktOffset) {
       var current = undefined;
       var dropdowns = [];
       var service = {};
@@ -33,6 +33,12 @@
         service.closeCurrent();
         dropdown.targets.forEach(function (target) {
           service.openTarget(target);
+          target.bounds = ktOffset.boundingRectangle(target[0]);
+          target.bind('DOMSubtreeModified', function () {
+            $timeout(function () {
+              target.bounds = ktOffset.boundingRectangle(target[0]);
+            });
+          });
         });
         dropdown.element.addClass('kt-dropdown-open');
         current = dropdown;
@@ -64,10 +70,6 @@
         return current === dropdown;
       };
 
-      service.initTarget = function (target) {
-        service.closeTarget(target);
-      };
-
       service.openTarget = function (target) {
         target.removeClass('kt-dropdown-target-closed');
         target.addClass('kt-dropdown-target-open');
@@ -80,6 +82,10 @@
 
       service.isOpen = function (dropdown) {
         return dropdown.element.hasClass('kt-dropdown-open');
+      };
+
+      service.getCurrent = function () {
+        return current;
       };
 
       return service;
@@ -105,25 +111,43 @@
         });
 
         element.on('click', function () {
+          document.removeEventListener('click', onDocumentClick, false);
+
           if (!ktDropdownSvc.isCurrent(dropdown)) {
             ktDropdownSvc.openDropdown(dropdown);
           } else {
             ktDropdownSvc.toggleDropdown(dropdown);
           }
+
+          $timeout(function () {
+            document.addEventListener('click', onDocumentClick, false);
+          });
         });
 
         scope.$on('$destroy', function () {
           ktDropdownSvc.removeDropdown(dropdown);
-        })
+        });
       }
 
-      document.addEventListener('click', function (e) {
-        e = e || window.event;
-        var target = angular.element(e.target || e.srcElement);
-        if (!target.attr('kt-dropdown') && !target.hasClass('kt-dropdown-target-open')) {
+      var onDocumentClick = function(e) {
+        var dropdown = ktDropdownSvc.getCurrent();
+        if (!dropdown || !dropdown.targets) {
+          return;
+        }
+
+        var clickedInsideCurrent = false;
+
+        dropdown.targets.forEach(function (target) {
+          if (e.pageX >= target.bounds.left && e.pageX <= target.bounds.right
+            && e.pageY >= target.bounds.top && e.pageY <= target.bounds.bottom) {
+            clickedInsideCurrent = true;
+          }
+        });
+
+        if (!clickedInsideCurrent && e.target.tagName !== 'OPTION') {
           ktDropdownSvc.closeCurrent();
         }
-      }, false);
+      };
 
       return {
         restrict: 'A',
